@@ -56,23 +56,19 @@ phases:
       - 'mkdir -p reports/dependency-check'
 
       - 'dependency-check.sh \
-          --project "$APPLICATION" \
-          --scan . \
-          --format ALL \
-          --out reports/dependency-check \
-          --enableExperimental \
-          --nvdApiKey "$NVD_API_key" \
-          --failOnCVSS 7 \
-          --suppression dependency-check-suppressions.xml \
-          --exclude "**/src/**" \
-          --exclude "**/test/**" \
-          --exclude "**/.*" \
-          --disablePyDist \
-          --disablePyPI \
-          --disableNodeAudit \
-          --disableNodeJS \
-          --disableCentral \
-          || echo "ADVERTENCIA: Vulnerabilidades detectadas. Continuando..."'
+        --project "$APPLICATION" \
+        --scan . \
+        --format HTML,JSON \
+        --out reports/dependency-check \
+        --enableExperimental \
+        --nvdApiKey "$NVD_API_key" \
+        --failOnCVSS 7 \
+        --suppression dependency-check-suppressions.xml \
+        --disablePyDist \
+        --disablePyPI \
+        --disableNodeAudit \
+        --disableNodeJS \
+        || echo "ADVERTENCIA: Vulnerabilidades detectadas. Continuando..."'
       
       - 'echo "Ejecutando análisis con SonarCloud..."'
       - 'CURRENT_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed "s/[^a-zA-Z0-9]/_/g")'
