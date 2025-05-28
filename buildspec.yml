@@ -59,7 +59,8 @@ phases:
       # Análisis OWASP Dependency Check (mejorado)
       - echo "Ejecutando OWASP Dependency-Check..."
       - mkdir -p reports/dependency-check
-      - dependency-check \
+      - >
+        dependency-check \
         --project "$APPLICATION" \
         --scan . \
         --format HTML \
