@@ -62,7 +62,8 @@ phases:
       - >
         dependency-check
         --project "$APPLICATION"
-        --scan "package-lock.json,node_modules"
+        --scan "package-lock.json"
+        --scan "node_modules"
         --format HTML
         --out reports/dependency-check
         --enableExperimental
