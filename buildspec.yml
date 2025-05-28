@@ -81,7 +81,7 @@ phases:
       # Build Docker (existente)
       - echo "Construyendo la imagen Docker..."
       - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
-      - echo "=== Fase de build completada: $(date) ==="
+      - 'echo "=== Fase de build completada: $(date) ==="'
 
   post_build:
     commands:
