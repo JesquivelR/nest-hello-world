@@ -62,7 +62,7 @@ phases:
       - >
         dependency-check
         --project "$APPLICATION"
-        --scan .
+        --scan "package-lock.json,node_modules"
         --format HTML
         --out reports/dependency-check
         --enableExperimental
