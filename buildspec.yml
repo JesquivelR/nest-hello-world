@@ -61,7 +61,7 @@ phases:
       - mkdir -p reports/dependency-check
       - dependency-check \
           --project "$APPLICATION" \
-          --scan "package-lock.json,node_modules" \
+          --scan . \
           --format HTML \
           --out reports/dependency-check \
           --enableExperimental \
