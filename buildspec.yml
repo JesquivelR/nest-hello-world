@@ -75,9 +75,7 @@ phases:
       # Análisis SonarQube (existente)
       - echo "Ejecutando análisis con SonarCloud..."
       - CURRENT_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed "s/[^a-zA-Z0-9]/_/g")
-      - sonar-scanner \
-          -Dsonar.token=$SONAR_TOKEN \
-          -Dsonar.branch.name=$CURRENT_BRANCH_NAME
+      - 'sonar-scanner -Dsonar.token=$SONAR_TOKEN -Dsonar.branch.name=$CURRENT_BRANCH_NAME'
       
       # Build Docker (existente)
       - echo "Construyendo la imagen Docker..."
