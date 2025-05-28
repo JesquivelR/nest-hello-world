@@ -8,7 +8,7 @@ env:
     APPLICATION: "nest-hello-world"
     SONAR_TOKEN: "d9af1d73e3713b008a813830a7e091cd40df2950"
     NVD_API_key: "ed5ecefa-22d4-4af1-8a89-9739e0ac607f"
-    DC_VERSION: "12.1.0"
+    DC_VERSION: "12.1.1"
 
 phases:
   install:
