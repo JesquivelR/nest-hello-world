@@ -54,7 +54,7 @@ phases:
       - 'echo "=== Fase de build iniciada: $(date) ==="'
       - 'echo "Ejecutando OWASP Dependency-Check..."'
       - 'mkdir -p reports/dependency-check'
-      - 'dependency-check.sh --project "$APPLICATION" --scan . --format HTML,JSON --out reports/dependency-check --enableExperimental --nvdApiKey "$NVD_API_key" --failOnCVSS 7 --suppression dependency-check-suppressions.xml || echo "ADVERTENCIA: Vulnerabilidades detectadas. Continuando..."'
+      - 'dependency-check.sh --project "$APPLICATION" --scan . --format HTML --out reports/dependency-check --enableExperimental --nvdApiKey "$NVD_API_key" --failOnCVSS 7 --suppression dependency-check-suppressions.xml || echo "ADVERTENCIA: Vulnerabilidades detectadas. Continuando..."'
       - 'echo "Ejecutando análisis con SonarCloud..."'
       - 'CURRENT_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed "s/[^a-zA-Z0-9]/_/g")'
       - 'sonar-scanner -Dsonar.token=$SONAR_TOKEN -Dsonar.branch.name=$CURRENT_BRANCH_NAME'
