@@ -28,7 +28,6 @@ phases:
       - echo "Descargando Dependency-Check CLI v${DC_VERSION}..."
       - wget -q "https://github.com/dependency-check/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip" -O /tmp/dependency-check.zip
       - unzip -q /tmp/dependency-check.zip -d /opt/
-      - mv /opt/dependency-check-* /opt/dependency-check
       - chmod +x /opt/dependency-check/bin/dependency-check.sh
       - ln -s /opt/dependency-check/bin/dependency-check.sh /usr/local/bin/dependency-check
       
