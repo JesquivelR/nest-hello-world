@@ -14,70 +14,94 @@ phases:
   install:
     runtime-versions:
       java: corretto17
+      nodejs: 18
     commands:
-      - 'echo "=== Fase de instalación iniciada ==="'
-      - 'echo "Descargando SonarScanner CLI..."'
-      - 'wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-7.1.0.4889-linux-x64.zip -O /tmp/sonar-scanner.zip'
-      - 'unzip -q /tmp/sonar-scanner.zip -d /opt/'
-      - 'mv /opt/sonar-scanner-* /opt/sonar-scanner'
-      - 'chmod +x /opt/sonar-scanner/bin/sonar-scanner'
-      - 'ln -s /opt/sonar-scanner/bin/sonar-scanner /usr/local/bin/'
-      - 'export PATH=/usr/local/bin:$PATH'
-      - 'echo "SonarScanner instalado"'
-      - 'echo "Descargando Dependency-Check CLI v${DC_VERSION}..."'
-      - 'wget -q https://github.com/dependency-check/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip -O /tmp/dependency-check.zip || (echo "ERROR: Falló descarga" && exit 1)'
-      - 'mkdir -p /opt/dependency-check'
-      - 'unzip -q /tmp/dependency-check.zip -d /opt/dependency-check'
-      - 'export DC_HOME=/opt/dependency-check/dependency-check'
-      - 'export PATH=$DC_HOME/bin:$PATH'
-      - 'chmod +x $DC_HOME/bin/dependency-check.sh'
-      - 'echo "Dependency-Check instalado en $DC_HOME"'
-      - 'echo "Verificando versiones..."'
-      - 'java -version'
-      - 'sonar-scanner -v'
-      - 'dependency-check.sh --version || echo "Advertencia: versión no verificada"'
-      - 'echo "=== Fase de instalación completada ==="'
+      - echo "=== Fase de instalación iniciada ==="
+      # Instalación SonarScanner (existente)
+      - wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-7.1.0.4889-linux-x64.zip -O /tmp/sonar-scanner.zip
+      - unzip -q /tmp/sonar-scanner.zip -d /opt/
+      - mv /opt/sonar-scanner-* /opt/sonar-scanner
+      - chmod +x /opt/sonar-scanner/bin/sonar-scanner
+      - ln -s /opt/sonar-scanner/bin/sonar-scanner /usr/local/bin/
+      
+      # Instalación Dependency-Check (optimizada)
+      - echo "Descargando Dependency-Check CLI v${DC_VERSION}..."
+      - wget -q "https://github.com/dependency-check/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip" -O /tmp/dependency-check.zip
+      - unzip -q /tmp/dependency-check.zip -d /opt/
+      - mv /opt/dependency-check-* /opt/dependency-check
+      - chmod +x /opt/dependency-check/bin/dependency-check.sh
+      - ln -s /opt/dependency-check/bin/dependency-check.sh /usr/local/bin/dependency-check
+      
+      # Verificaciones
+      - java -version
+      - node --version
+      - npm --version
+      - sonar-scanner -v
+      - dependency-check --version
+      - echo "=== Fase de instalación completada ==="
 
   pre_build:
     commands:
-      - 'echo "=== Fase de pre_build iniciada ==="'
-      - 'echo "Logueando en Amazon ECR..."'
-      - 'aws --version'
-      - 'aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${REPOSITORY_URI%/*}'
-      - 'COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-7)'
-      - 'export IMAGE_TAG=$ENV-$APPLICATION-$COMMIT_HASH'
-      - 'echo "IMAGE_TAG establecido a: $IMAGE_TAG"'
-      - 'echo "=== Fase de pre_build completada ==="'
+      - echo "=== Fase de pre_build iniciada ==="
+      # Login ECR (existente)
+      - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${REPOSITORY_URI%/*}
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-7)
+      - export IMAGE_TAG=$ENV-$APPLICATION-$COMMIT_HASH
+      
+      # PASO CRÍTICO: Instalar dependencias del proyecto
+      - echo "Instalando dependencias de Node.js..."
+      - npm install --production  # Instala solo dependencias de producción
+      
+      - echo "=== Fase de pre_build completada ==="
 
   build:
     commands:
-      - 'echo "=== Fase de build iniciada: $(date) ==="'
-      - 'echo "Ejecutando OWASP Dependency-Check..."'
-      - 'mkdir -p reports/dependency-check'
-      - 'dependency-check.sh --project "$APPLICATION" --scan . --format HTML --out reports/dependency-check --enableExperimental --nvdApiKey "$NVD_API_key" --failOnCVSS 7 --suppression dependency-check-suppressions.xml || echo "ADVERTENCIA: Vulnerabilidades detectadas. Continuando..."'
-      - 'echo "Ejecutando análisis con SonarCloud..."'
-      - 'CURRENT_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed "s/[^a-zA-Z0-9]/_/g")'
-      - 'sonar-scanner -Dsonar.token=$SONAR_TOKEN -Dsonar.branch.name=$CURRENT_BRANCH_NAME'
-      - 'echo "Construyendo la imagen Docker..."'
-      - 'docker build -t $REPOSITORY_URI:$IMAGE_TAG .'
-      - 'echo "=== Fase de build completada: $(date) ==="'
+      - echo "=== Fase de build iniciada: $(date) ==="
+      
+      # Análisis OWASP Dependency Check (mejorado)
+      - echo "Ejecutando OWASP Dependency-Check..."
+      - mkdir -p reports/dependency-check
+      - dependency-check \
+          --project "$APPLICATION" \
+          --scan "package-lock.json,node_modules" \
+          --format HTML \
+          --out reports/dependency-check \
+          --enableExperimental \
+          --nvdApiKey "$NVD_API_key" \
+          --failOnCVSS 7 \
+          --suppression dependency-check-suppressions.xml \
+          || (echo "##[warning] Vulnerabilidades detectadas"; true)
+      
+      # Análisis SonarQube (existente)
+      - echo "Ejecutando análisis con SonarCloud..."
+      - CURRENT_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed "s/[^a-zA-Z0-9]/_/g")
+      - sonar-scanner \
+          -Dsonar.token=$SONAR_TOKEN \
+          -Dsonar.branch.name=$CURRENT_BRANCH_NAME
+      
+      # Build Docker (existente)
+      - echo "Construyendo la imagen Docker..."
+      - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
+      - echo "=== Fase de build completada: $(date) ==="
 
   post_build:
     commands:
-      - 'echo "=== Fase de post_build iniciada: $(date) ==="'
-      - 'echo "Pushing Docker image..."'
-      - 'docker push $REPOSITORY_URI:$IMAGE_TAG'
-      - 'echo "Generando imagedefinitions.json..."'
-      - "printf '[{\"name\":\"%s\",\"imageUri\":\"%s\"}]' \"$APPLICATION\" \"$REPOSITORY_URI:$IMAGE_TAG\" > imagedefinitions.json"
-      - 'echo "=== Fase de post_build completada: $(date) ==="'
+      - echo "=== Fase de post_build iniciada: $(date) ==="
+      # Push Docker (existente)
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - printf '[{"name":"%s","imageUri":"%s"}]' "$APPLICATION" "$REPOSITORY_URI:$IMAGE_TAG" > imagedefinitions.json
+      - echo "=== Fase de post_build completada: $(date) ==="
 
 artifacts:
   files:
     - imagedefinitions.json
-    - 'reports/dependency-check/**'
-  discard-paths: yes
+    - 'reports/dependency-check/*'  # Reportes HTML
+  base-directory: 'reports/dependency-check'  # CONSERVA ESTRUCTURA
+  discard-paths: no  # IMPORTANTE: Mantiene rutas relativas
 
 cache:
   paths:
     - '/root/.sonar/cache/**/*'
-    - '$DC_HOME/data/**/*'
+    - '/opt/dependency-check/data/**/*'  # Cache de vulnerabilidades
+    - 'node_modules/**/*'  # AÑADIDO: Cache de dependencias
+    - '.npm/**/*'          # Cache de npm
