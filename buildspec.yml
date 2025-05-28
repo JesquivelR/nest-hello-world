@@ -60,15 +60,15 @@ phases:
       - echo "Ejecutando OWASP Dependency-Check..."
       - mkdir -p reports/dependency-check
       - >
-        dependency-check \
-        --project "$APPLICATION" \
-        --scan . \
-        --format HTML \
-        --out reports/dependency-check \
-        --enableExperimental \
-        --nvdApiKey "$NVD_API_key" \
-        --failOnCVSS 7 \
-        --suppression dependency-check-suppressions.xml \
+        dependency-check
+        --project "$APPLICATION"
+        --scan .
+        --format HTML
+        --out reports/dependency-check
+        --enableExperimental
+        --nvdApiKey "$NVD_API_key"
+        --failOnCVSS 7
+        --suppression dependency-check-suppressions.xml
         || (echo "##[warning] Vulnerabilidades detectadas"; true)
       
       # Análisis SonarQube (existente)
