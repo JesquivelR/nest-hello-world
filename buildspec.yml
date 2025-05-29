@@ -10,9 +10,8 @@ env:
     NVD_API_key: "ed5ecefa-22d4-4af1-8a89-9739e0ac607f"
     SONAR_SCANNER_IMAGE: "sonarsource/sonar-scanner-cli:11.3.1.1910_7.1.0"
     DEPENDENCY_CHECK_IMAGE: "owasp/dependency-check:12.1.1"
-    # Opciones adicionales para verbosidad
-    DC_LOG_LEVEL: "INFO"  # DEBUG, INFO, WARN, ERROR
-    SONAR_VERBOSE: "true" # true/false
+    DC_LOG_LEVEL: "INFO"
+    SONAR_VERBOSE: "true"
 
 phases:
   install:
@@ -41,16 +40,16 @@ phases:
     commands:
       - echo "=== Build ==="
       
-      # 1. Dependency-Check con logs detallados
+      # 1. Dependency-Check con logs detallados (CORREGIDO)
       - echo "Iniciando análisis de vulnerabilidades..."
       - mkdir -p reports/dependency-check
       - >
         docker run --rm -u $(id -u):$(id -g) -v "$(pwd):/src" 
-        -e LOG_LEVEL=$DC_LOG_LEVEL  # Control de verbosidad
+        -e LOG_LEVEL=$DC_LOG_LEVEL 
         $DEPENDENCY_CHECK_IMAGE 
         --project "$APPLICATION" 
-        --scan "package-lock.json" 
-        --scan "node_modules"
+        --scan "/src/package-lock.json" 
+        --scan "/src/node_modules" 
         --format HTML 
         --out "/src/reports/dependency-check" 
         --enableExperimental 
@@ -73,7 +72,7 @@ phases:
         sonar-scanner 
         -Dsonar.token=$SONAR_TOKEN 
         -Dsonar.branch.name=$CURRENT_BRANCH_NAME 
-        -Dsonar.verbose=$SONAR_VERBOSE  # Activar verbosidad
+        -Dsonar.verbose=$SONAR_VERBOSE
       
       # 3. Construcción de la aplicación
       - echo "Construyendo imagen Docker..."
@@ -83,8 +82,9 @@ phases:
     commands:
       - echo "=== Post-Build ==="
       - docker push $IMAGE_URI
-      - docker push $REPOSITERY_URI:latest
-      - mkdir -p artefactos/{dependency-check,ecs}
+      - docker push $REPOSITORY_URI:latest
+      - mkdir -p artefactos/dependency-check
+      - mkdir -p artefactos/ecs
       - cp -r reports/dependency-check/* artefactos/dependency-check/ || echo "No se encontraron reportes"
       - printf '[{"name":"%s","imageUri":"%s"}]' "$APPLICATION" "$IMAGE_URI" > artefactos/ecs/imagedefinitions.json
       - echo "Artefactos generados:"
