@@ -88,14 +88,16 @@ phases:
       # Push Docker (existente)
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - printf '[{"name":"%s","imageUri":"%s"}]' "$APPLICATION" "$REPOSITORY_URI:$IMAGE_TAG" > imagedefinitions.json
+      - mkdir -p Artefactos/dependency-check
+      - cp -r reports/dependency-check/* Artefactos/dependency-check/
+      - mv imagedefinitions.json Artefactos/
       - 'echo "=== Fase de post_build completada: $(date) ==="'
 
 artifacts:
   files:
-    - imagedefinitions.json
-    - 'reports/dependency-check/*'  # Reportes HTML
-  base-directory: 'reports/dependency-check'  # CONSERVA ESTRUCTURA
-  discard-paths: no  # IMPORTANTE: Mantiene rutas relativas
+    - '**/*'
+  base-directory: 'Artefactos'
+  discard-paths: no
 
 cache:
   paths:
