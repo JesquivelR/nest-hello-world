@@ -55,7 +55,6 @@ phases:
         --enableExperimental 
         --nvdApiKey "$NVD_API_key" 
         --failOnCVSS 7 
-        --suppression "/src/dependency-check-suppressions.xml" 
         --log "/src/reports/dependency-check/dependency-check.log" 
         || echo "##[warning] Dependency-Check encontró vulnerabilidades"
       
