@@ -8,62 +8,32 @@ env:
     APPLICATION: "nest-hello-world"
     SONAR_TOKEN: "d9af1d73e3713b008a813830a7e091cd40df2950"
     NVD_API_key: "ed5ecefa-22d4-4af1-8a89-9739e0ac607f"
-    DC_VERSION: "12.1.1"
-    SONAR_SCANNER_VERSION: "7.1.0.4889"
-    DEPENDENCY_CHECK_DIR: "/opt/dependency-check"
-    SONAR_SCANNER_DIR: "/opt/sonar-scanner"
+    SONAR_SCANNER_IMAGE: "sonarsource/sonar-scanner-cli:11.3.1.1910_7.1.0"
+    DEPENDENCY_CHECK_IMAGE: "owasp/dependency-check:12.1.1"
+    # Opciones adicionales para verbosidad
+    DC_LOG_LEVEL: "INFO"  # DEBUG, INFO, WARN, ERROR
+    SONAR_VERBOSE: "true" # true/false
 
 phases:
   install:
     runtime-versions:
-      java: corretto17
-      nodejs: 18
+      nodejs: 24
     commands:
       - echo "=== Fase de instalación ==="
-      
-      # Instalación condicional de SonarScanner
-      - if [ ! -d "$SONAR_SCANNER_DIR" ]; then
-          echo "Instalando SonarScanner v$SONAR_SCANNER_VERSION";
-          wget -q "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip" -O /tmp/sonar-scanner.zip;
-          unzip -q /tmp/sonar-scanner.zip -d /opt/;
-          mv /opt/sonar-scanner-* $SONAR_SCANNER_DIR;
-          chmod +x $SONAR_SCANNER_DIR/bin/sonar-scanner;
-          ln -s $SONAR_SCANNER_DIR/bin/sonar-scanner /usr/local/bin/;
-        else
-          echo "SonarScanner ya instalado. Saltando descarga.";
-        fi
-
-      # Instalación condicional de Dependency-Check
-      - if [ ! -d "$DEPENDENCY_CHECK_DIR" ]; then
-          echo "Instalando Dependency-Check v${DC_VERSION}";
-          wget -q "https://github.com/dependency-check/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip" -O /tmp/dependency-check.zip;
-          unzip -q /tmp/dependency-check.zip -d /opt/;
-          chmod +x $DEPENDENCY_CHECK_DIR/bin/dependency-check.sh;
-          ln -s $DEPENDENCY_CHECK_DIR/bin/dependency-check.sh /usr/local/bin/dependency-check;
-        else
-          echo "Dependency-Check ya instalado. Saltando descarga.";
-        fi
-
-      # Verificación de herramientas
-      - echo "Versiones de herramientas:"
-      - node --version
-      - npm --version
-      - sonar-scanner -v
-      - dependency-check --version
+      - echo "Docker version: $(docker --version)"
+      - echo "Pre-pulling imágenes de herramientas..."
+      - docker pull $SONAR_SCANNER_IMAGE
+      - docker pull $DEPENDENCY_CHECK_IMAGE
+      - echo "Imágenes listas:"
+      - docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
 
   pre_build:
     commands:
       - echo "=== Pre-Build ==="
-      
-      # Login a ECR
       - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${REPOSITORY_URI%/*}
-      
-      # Metadata para despliegues
       - export COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-7)
       - export IMAGE_TAG=${ENV}-${APPLICATION}-${COMMIT_HASH}-${CODEBUILD_BUILD_NUMBER}
       - export IMAGE_URI=$REPOSITORY_URI:$IMAGE_TAG
-      
-      # Instalación de dependencias con caché
       - echo "Instalando dependencias de Node.js..."
       - npm ci --cache .npm --prefer-offline
 
@@ -71,63 +41,62 @@ phases:
     commands:
       - echo "=== Build ==="
       
-      # 1. Análisis de vulnerabilidades con Dependency-Check
-      - echo "Ejecutando Dependency-Check..."
+      # 1. Dependency-Check con logs detallados
+      - echo "Iniciando análisis de vulnerabilidades..."
       - mkdir -p reports/dependency-check
       - >
-        dependency-check 
+        docker run --rm -u $(id -u):$(id -g) -v "$(pwd):/src" 
+        -e LOG_LEVEL=$DC_LOG_LEVEL  # Control de verbosidad
+        $DEPENDENCY_CHECK_IMAGE 
         --project "$APPLICATION" 
         --scan "package-lock.json" 
-        --scan "src" 
+        --scan "node_modules"
         --format HTML 
-        --out reports/dependency-check 
+        --out "/src/reports/dependency-check" 
         --enableExperimental 
         --nvdApiKey "$NVD_API_key" 
         --failOnCVSS 7 
-        --suppression dependency-check-suppressions.xml 
+        --suppression "/src/dependency-check-suppressions.xml" 
+        --log "/src/reports/dependency-check/dependency-check.log" 
         || echo "##[warning] Dependency-Check encontró vulnerabilidades"
       
-      # 2. Análisis de código con SonarQube
-      - echo "Ejecutando SonarScanner..."
-      - CURRENT_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed "s/[^a-zA-Z0-9]/_/g")
-      - sonar-scanner -Dsonar.token=$SONAR_TOKEN -Dsonar.branch.name=$CURRENT_BRANCH_NAME
+      # Mostrar resumen del análisis
+      - echo "Resumen de Dependency-Check:"
+      - tail -n 20 reports/dependency-check/dependency-check.log || echo "No se encontró log"
       
-      # 3. Construcción de imagen Docker
+      # 2. SonarScanner con modo verbose
+      - echo "Iniciando análisis de código..."
+      - CURRENT_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed "s/[^a-zA-Z0-9]/_/g")
+      - >
+        docker run --rm -u $(id -u):$(id -g) -v "$(pwd):/usr/src" 
+        $SONAR_SCANNER_IMAGE 
+        sonar-scanner 
+        -Dsonar.token=$SONAR_TOKEN 
+        -Dsonar.branch.name=$CURRENT_BRANCH_NAME 
+        -Dsonar.verbose=$SONAR_VERBOSE  # Activar verbosidad
+      
+      # 3. Construcción de la aplicación
       - echo "Construyendo imagen Docker..."
-      - docker build --cache-from $REPOSITORY_URI:latest -t $IMAGE_URI -t $REPOSITORY_URI:latest .
+      - docker build -t $IMAGE_URI -t $REPOSITORY_URI:latest .
 
   post_build:
     commands:
       - echo "=== Post-Build ==="
-      
-      # 1. Push de imagen Docker
       - docker push $IMAGE_URI
-      - docker push $REPOSITORY_URI:latest
-      
-      # 2. Preparación de artefactos
-      - mkdir -p artefactos/dependency-check
-      - mkdir -p artefactos/ecs
-      
-      - if [ -n "$(ls -A reports/dependency-check/ 2>/dev/null)" ]; then
-          cp -r reports/dependency-check/* artefactos/dependency-check/;
-        else
-          echo "No se encontraron reportes de Dependency-Check para copiar";
-        fi
-      
+      - docker push $REPOSITERY_URI:latest
+      - mkdir -p artefactos/{dependency-check,ecs}
+      - cp -r reports/dependency-check/* artefactos/dependency-check/ || echo "No se encontraron reportes"
       - printf '[{"name":"%s","imageUri":"%s"}]' "$APPLICATION" "$IMAGE_URI" > artefactos/ecs/imagedefinitions.json
-      - echo "Estructura de artefactos:"
-      - ls -lR artefactos || true
+      - echo "Artefactos generados:"
+      - find artefactos -type f | xargs ls -lh
 
-# SECCIÓN ARTEACTOS CORREGIDA
 artifacts:
   files:
-    - '**/*'  # Patrón relativo al directorio base
-  base-directory: 'artefactos'  # Directorio raíz de artefactos
+    - '**/*'
+  base-directory: 'artefactos'
   discard-paths: no
 
 cache:
   paths:
-    - '/root/.sonar/cache/**/*'
-    - '$DEPENDENCY_CHECK_DIR/data/**/*'
     - '/root/.npm/**/*'
     - '.npm/**/*'
