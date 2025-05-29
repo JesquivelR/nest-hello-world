@@ -20,7 +20,7 @@ phases:
       nodejs: 24
     commands:
       - echo "=== Fase de instalación ==="
-      - echo "Docker version: $(docker --version)"
+      - 'echo "Docker version: $(docker --version)"'
       - echo "Pre-pulling imágenes de herramientas..."
       - docker pull $SONAR_SCANNER_IMAGE
       - docker pull $DEPENDENCY_CHECK_IMAGE
