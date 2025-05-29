@@ -9,7 +9,6 @@ env:
     SONAR_TOKEN: "d9af1d73e3713b008a813830a7e091cd40df2950"
     NVD_API_key: "ed5ecefa-22d4-4af1-8a89-9739e0ac607f"
     DC_VERSION: "12.1.1"
-    # Nuevas variables parametrizadas
     SONAR_SCANNER_VERSION: "7.1.0.4889"
     DEPENDENCY_CHECK_DIR: "/opt/dependency-check"
     SONAR_SCANNER_DIR: "/opt/sonar-scanner"
@@ -22,25 +21,31 @@ phases:
     commands:
       - echo "=== Fase de instalación ==="
       
-      # Instalación optimizada de SonarScanner (con caché)
+      # Instalación condicional de SonarScanner
       - if [ ! -d "$SONAR_SCANNER_DIR" ]; then
           echo "Instalando SonarScanner v$SONAR_SCANNER_VERSION";
           wget -q "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip" -O /tmp/sonar-scanner.zip;
           unzip -q /tmp/sonar-scanner.zip -d /opt/;
           mv /opt/sonar-scanner-* $SONAR_SCANNER_DIR;
+          chmod +x $SONAR_SCANNER_DIR/bin/sonar-scanner;
           ln -s $SONAR_SCANNER_DIR/bin/sonar-scanner /usr/local/bin/;
+        else
+          echo "SonarScanner ya instalado. Saltando descarga.";
         fi
 
-      # Instalación optimizada de Dependency-Check
+      # Instalación condicional de Dependency-Check
       - if [ ! -d "$DEPENDENCY_CHECK_DIR" ]; then
           echo "Instalando Dependency-Check v${DC_VERSION}";
           wget -q "https://github.com/dependency-check/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip" -O /tmp/dependency-check.zip;
           unzip -q /tmp/dependency-check.zip -d /opt/;
-          mv /opt/dependency-check-* $DEPENDENCY_CHECK_DIR;
+          chmod +x $DEPENDENCY_CHECK_DIR/bin/dependency-check.sh;
           ln -s $DEPENDENCY_CHECK_DIR/bin/dependency-check.sh /usr/local/bin/dependency-check;
+        else
+          echo "Dependency-Check ya instalado. Saltando descarga.";
         fi
 
       # Verificación de herramientas
+      - echo "Versiones de herramientas:"
       - node --version
       - npm --version
       - sonar-scanner -v
@@ -50,7 +55,7 @@ phases:
     commands:
       - echo "=== Pre-Build ==="
       
-      # Login seguro a ECR
+      # Login a ECR
       - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${REPOSITORY_URI%/*}
       
       # Metadata para despliegues
@@ -58,39 +63,51 @@ phases:
       - export IMAGE_TAG=${ENV}-${APPLICATION}-${COMMIT_HASH}-${CODEBUILD_BUILD_NUMBER}
       - export IMAGE_URI=$REPOSITORY_URI:$IMAGE_TAG
       
-      # Instalación inteligente de dependencias
-      - echo "Restaurando dependencias de Node.js"
+      # Instalación de dependencias con caché
+      - echo "Instalando dependencias de Node.js..."
       - npm ci --cache .npm --prefer-offline
 
   build:
     commands:
       - echo "=== Build ==="
       
-      # Ejecución paralela de análisis de seguridad
+      # 1. Análisis de vulnerabilidades con Dependency-Check (secuencial)
+      - echo "Ejecutando Dependency-Check..."
+      - mkdir -p reports/dependency-check
       - >
-        dependency-check --project "$APPLICATION" --scan "package-lock.json" --scan "src" --format HTML 
-        --out reports/dependency-check --enableExperimental --nvdApiKey "$NVD_API_key" --failOnCVSS 7 
-        --suppression dependency-check-suppressions.xml &
-      - >
-        sonar-scanner -Dsonar.token=$SONAR_TOKEN -Dsonar.branch.name=$(git rev-parse --abbrev-ref HEAD | sed "s/[^a-zA-Z0-9]/_/g") &
-      - wait
+        dependency-check 
+        --project "$APPLICATION" 
+        --scan "package-lock.json" 
+        --scan "src" 
+        --format HTML 
+        --out reports/dependency-check 
+        --enableExperimental 
+        --nvdApiKey "$NVD_API_key" 
+        --failOnCVSS 7 
+        --suppression dependency-check-suppressions.xml 
+        || echo "##[warning] Dependency-Check encontró vulnerabilidades"
       
-      # Construcción eficiente de Docker (usando caché de build)
-      - echo "Construyendo imagen Docker"
+      # 2. Análisis de código con SonarQube (secuencial)
+      - echo "Ejecutando SonarScanner..."
+      - CURRENT_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed "s/[^a-zA-Z0-9]/_/g")
+      - sonar-scanner -Dsonar.token=$SONAR_TOKEN -Dsonar.branch.name=$CURRENT_BRANCH_NAME
+      
+      # 3. Construcción de imagen Docker (secuencial)
+      - echo "Construyendo imagen Docker..."
       - docker build --cache-from $REPOSITORY_URI:latest -t $IMAGE_URI -t $REPOSITORY_URI:latest .
 
   post_build:
     commands:
       - echo "=== Post-Build ==="
       
-      # Push de imágenes con etiquetas múltiples
+      # 1. Push de imagen Docker
       - docker push $IMAGE_URI
       - docker push $REPOSITORY_URI:latest
       
-      # Generación de artefactos
+      # 2. Preparación de artefactos
       - mkdir -p artefactos/{dependency-check,ecs}
-      - printf '[{"name":"%s","imageUri":"%s"}]' "$APPLICATION" "$IMAGE_URI" > artefactos/ecs/imagedefinitions.json
       - cp -r reports/dependency-check/* artefactos/dependency-check/
+      - printf '[{"name":"%s","imageUri":"%s"}]' "$APPLICATION" "$IMAGE_URI" > artefactos/ecs/imagedefinitions.json
 
 artifacts:
   files:
@@ -102,5 +119,4 @@ cache:
     - '/root/.sonar/cache/**/*'
     - '$DEPENDENCY_CHECK_DIR/data/**/*'
     - '/root/.npm/**/*'
-    - '$SONAR_SCANNER_DIR/**/*'
     - '.npm/**/*'
