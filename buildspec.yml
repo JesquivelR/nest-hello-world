@@ -71,7 +71,7 @@ phases:
     commands:
       - echo "=== Build ==="
       
-      # 1. Análisis de vulnerabilidades con Dependency-Check (secuencial)
+      # 1. Análisis de vulnerabilidades con Dependency-Check
       - echo "Ejecutando Dependency-Check..."
       - mkdir -p reports/dependency-check
       - >
@@ -87,12 +87,12 @@ phases:
         --suppression dependency-check-suppressions.xml 
         || echo "##[warning] Dependency-Check encontró vulnerabilidades"
       
-      # 2. Análisis de código con SonarQube (secuencial)
+      # 2. Análisis de código con SonarQube
       - echo "Ejecutando SonarScanner..."
       - CURRENT_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | sed "s/[^a-zA-Z0-9]/_/g")
       - sonar-scanner -Dsonar.token=$SONAR_TOKEN -Dsonar.branch.name=$CURRENT_BRANCH_NAME
       
-      # 3. Construcción de imagen Docker (secuencial)
+      # 3. Construcción de imagen Docker
       - echo "Construyendo imagen Docker..."
       - docker build --cache-from $REPOSITORY_URI:latest -t $IMAGE_URI -t $REPOSITORY_URI:latest .
 
@@ -104,10 +104,20 @@ phases:
       - docker push $IMAGE_URI
       - docker push $REPOSITORY_URI:latest
       
-      # 2. Preparación de artefactos
-      - mkdir -p artefactos/{dependency-check,ecs}
-      - cp -r reports/dependency-check/* artefactos/dependency-check/
+      # 2. Preparación de artefactos - CORRECCIÓN DEL ERROR
+      - mkdir -p artefactos/dependency-check
+      - mkdir -p artefactos/ecs
+      
+      # Copiar solo si existen archivos (evitar error con wildcard)
+      - if [ -n "$(ls -A reports/dependency-check/)" ]; then
+          cp -r reports/dependency-check/* artefactos/dependency-check/;
+        else
+          echo "No se encontraron reportes de Dependency-Check para copiar";
+        fi
+      
       - printf '[{"name":"%s","imageUri":"%s"}]' "$APPLICATION" "$IMAGE_URI" > artefactos/ecs/imagedefinitions.json
+      - echo "Estructura de artefactos:"
+      - tree artefactos || true
 
 artifacts:
   files:
