@@ -104,12 +104,11 @@ phases:
       - docker push $IMAGE_URI
       - docker push $REPOSITORY_URI:latest
       
-      # 2. Preparación de artefactos - CORRECCIÓN DEL ERROR
+      # 2. Preparación de artefactos
       - mkdir -p artefactos/dependency-check
       - mkdir -p artefactos/ecs
       
-      # Copiar solo si existen archivos (evitar error con wildcard)
-      - if [ -n "$(ls -A reports/dependency-check/)" ]; then
+      - if [ -n "$(ls -A reports/dependency-check/ 2>/dev/null)" ]; then
           cp -r reports/dependency-check/* artefactos/dependency-check/;
         else
           echo "No se encontraron reportes de Dependency-Check para copiar";
@@ -117,12 +116,14 @@ phases:
       
       - printf '[{"name":"%s","imageUri":"%s"}]' "$APPLICATION" "$IMAGE_URI" > artefactos/ecs/imagedefinitions.json
       - echo "Estructura de artefactos:"
-      - tree artefactos || true
+      - ls -lR artefactos || true
 
+# SECCIÓN ARTEACTOS CORREGIDA
 artifacts:
   files:
-    - 'artefactos/**/*'
-  base-directory: 'artefactos'
+    - '**/*'  # Patrón relativo al directorio base
+  base-directory: 'artefactos'  # Directorio raíz de artefactos
+  discard-paths: no
 
 cache:
   paths:
